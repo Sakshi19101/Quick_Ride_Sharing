@@ -1,0 +1,124 @@
+# Flutter/Dart specific
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+.metadata
+
+# IDE specific
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Firebase - ALL service account and config files
+**/google-services.json
+**/GoogleService-Info.plist
+**/service-account.json
+**/*-firebase-adminsdk-*.json
+**/campus-rideshare-*.json
+firestore.rules
+firebase.json
+
+# Environment and API keys
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/lib/services/api_key.dart
+**/lib/services/service_account.dart
+**/lib/firebase_options.dart
+**/lib/service_account.dart
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Node.js (if using any Node tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android specific
+android/app/build/
+android/local.properties
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/.gradle/
+android/captures/
+android/keystores/
+**/*.keystore
+**/*.jks
+
+# iOS specific
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Pods/
+ios/.symlinks/
+ios/Podfile.lock
+ios/Runner.xcworkspace/xcuserdata
+ios/Runner/Flutter/Generated.xcconfig
+ios/Runner/Flutter/flutter_assets/
+ios/Runner/Flutter/App.framework
+ios/Runner/Flutter/App.framework.zip
+
+# Web specific
+web/build/
+
+# Linux specific
+linux/flutter/ephemeral/
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugins.cmake
+
+# macOS specific
+macos/Flutter/Flutter.framework
+macos/Flutter/Flutter.podspec
+macos/Pods/
+macos/.symlinks/
+macos/Podfile.lock
+macos/Runner.xcworkspace/xcuserdata
+macos/Runner/Flutter/Generated.xcconfig
+macos/Runner/Flutter/flutter_assets/
+macos/Runner/Flutter/App.framework
+macos/Runner/Flutter/App.framework.zip
+
+# Windows specific
+windows/flutter/ephemeral/
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugins.cmake
+
+# Test coverage
+coverage/
+lcov.info
+
+# Documentation
+/docs/_build/
+
+# Backup files
+*.bak
+*.backup

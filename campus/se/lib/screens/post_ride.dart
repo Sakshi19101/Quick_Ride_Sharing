@@ -1,0 +1,850 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:geocoding/geocoding.dart';
+import 'my_rides.dart';
+import 'my_bookings.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/notification_service.dart';
+import '../services/distance_service.dart' hide LatLng;
+
+class PostRide extends StatefulWidget {
+  const PostRide({super.key});
+
+  @override
+  State<PostRide> createState() => _PostRideState();
+}
+
+class _PostRideState extends State<PostRide> {
+  final _formKey = GlobalKey<FormState>();
+  List<dynamic> fromSuggestions = [];
+  List<dynamic> toSuggestions = [];
+  final fromC = TextEditingController();
+  final toC = TextEditingController();
+  final fareC = TextEditingController();
+  final dateC = TextEditingController();
+  final timeC = TextEditingController();
+  final costPerKmC = TextEditingController();
+  final vehicleRegC = TextEditingController();
+  final driverContactC = TextEditingController();
+  final vehicleNameC = TextEditingController();
+  final seatsC = TextEditingController();
+
+  String? vehicleType;
+  String? carType;
+  bool loading = false;
+  LatLng? _fromLatLng;
+  LatLng? _toLatLng;
+  bool selectingPickup = true;
+
+  String? costPerKmError;
+  String? driverContactError;
+
+  File? driverPhoto;
+  File? vehiclePhoto;
+
+  final Map<String, dynamic> priceRanges = {
+    'Bike': {'min': 1.0, 'max': 4.0},
+    'Car': {
+      'Hatchback': {'min': 5.0, 'max': 10.0},
+      'Sedan': {'min': 8.0, 'max': 12.0},
+      'MPV': {'min': 10.0, 'max': 15.0},
+      'SUV': {'min': 13.0, 'max': 20.0},
+      'Luxury': {'min': 18.0, 'max': 25.0},
+    }
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    dateC.text = DateFormat('yyyy-MM-dd').format(now);
+    timeC.text = DateFormat('HH:mm').format(now);
+  }
+
+  void _updateFare() async {
+    if (vehicleType == null || (vehicleType == 'Car' && carType == null)) {
+      setState(() {
+        costPerKmError = 'Please select a vehicle type first.';
+      });
+      return;
+    }
+
+    double? costPerKm = double.tryParse(costPerKmC.text);
+    double minPrice, maxPrice;
+    String vehicleDesc = vehicleType!;
+
+    if (vehicleType == 'Bike') {
+      minPrice = priceRanges['Bike']!['min']!;
+      maxPrice = priceRanges['Bike']!['max']!;
+    } else { // Car
+      vehicleDesc = carType!;
+      minPrice = priceRanges['Car']![carType]!['min']!;
+      maxPrice = priceRanges['Car']![carType]!['max']!;
+    }
+
+    if (costPerKmC.text.isEmpty) {
+      setState(() => costPerKmError = null);
+    } else if (costPerKm == null || costPerKm < minPrice || costPerKm > maxPrice) {
+      setState(() => costPerKmError = 'Cost must be between $minPrice and $maxPrice for a $vehicleDesc');
+    } else {
+      setState(() => costPerKmError = null);
+    }
+
+    if (_fromLatLng != null &&
+        _toLatLng != null &&
+        costPerKm != null &&
+        costPerKmError == null) {
+      String distanceStr = await DistanceService.calculateRoadDistanceFromCoords(
+          _fromLatLng!.latitude, _fromLatLng!.longitude, _toLatLng!.latitude, _toLatLng!.longitude);
+      if (distanceStr != 'N/A') {
+        double dist = double.parse(distanceStr.replaceAll(' km', ''));
+        fareC.text = (dist * costPerKm).toStringAsFixed(2);
+      } else {
+        fareC.text = 'Error';
+      }
+    } else {
+      fareC.text = '';
+    }
+  }
+
+  Future<void> _pickFile(String type) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        if (type == 'driverPhoto') {
+          driverPhoto = File(image.path);
+        } else if (type == 'vehiclePhoto') {
+          vehiclePhoto = File(image.path);
+        }
+      });
+    }
+  }
+
+  Future<String> _uploadFile(File file, String rideId, String type) async {
+    final storageRef = FirebaseStorage.instance.ref().child('vehicle_photos').child(rideId).child('$type.jpg');
+    final uploadTask = storageRef.putFile(file);
+    final snapshot = await uploadTask.whenComplete(() => {});
+    final downloadUrl = await snapshot.ref.getDownloadURL();
+    return downloadUrl;
+  }
+
+  Future<void> _postRide() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    double? costPerKm = double.tryParse(costPerKmC.text);
+    if (_fromLatLng == null ||
+        _toLatLng == null ||
+        fareC.text.isEmpty ||
+        costPerKm == null) return;
+
+    if (driverPhoto == null ||
+        vehiclePhoto == null ||
+        vehicleRegC.text.isEmpty ||
+        driverContactC.text.length != 10 ||
+        !RegExp(r'^\d{10}$').hasMatch(driverContactC.text) ||
+        vehicleType == null ||
+        (vehicleType == 'Car' && carType == null) ||
+        vehicleNameC.text.isEmpty ||
+        seatsC.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Please fill all driver and vehicle details, including a valid 10 digit contact number.')),
+      );
+      return;
+    }
+    setState(() => loading = true);
+
+    try {
+      final rideId = FirebaseFirestore.instance.collection("rides").doc().id;
+
+      final String driverPhotoUrl = await _uploadFile(driverPhoto!, rideId, 'driver');
+      final String vehiclePhotoUrl = await _uploadFile(vehiclePhoto!, rideId, 'vehicle');
+
+      final user = FirebaseAuth.instance.currentUser!;
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final driverName = userDoc.data()?['displayName'] ?? 'Anonymous Driver';
+
+      // Ensure a document for the driver exists with their name.
+      final driverRef = FirebaseFirestore.instance.collection('drivers').doc(user.uid);
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final driverDoc = await transaction.get(driverRef);
+        if (!driverDoc.exists) {
+          transaction.set(driverRef, {
+            'displayName': driverName,
+            'uid': user.uid,
+            'averageRating': 0.0,
+            'ratingCount': 0,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          // If it exists, just ensure the displayName is up-to-date.
+          transaction.update(driverRef, {'displayName': driverName});
+        }
+      });
+
+      await FirebaseFirestore.instance.collection("rides").doc(rideId).set({
+        "from": fromC.text,
+        "to": toC.text,
+        "fare": fareC.text,
+        "date": dateC.text,
+        "time": timeC.text,
+        "fromLat": _fromLatLng!.latitude,
+        "fromLng": _fromLatLng!.longitude,
+        "toLat": _toLatLng!.latitude,
+        "toLng": _toLatLng!.longitude,
+        "costPerKm": costPerKm,
+        "driverPhoto": driverPhotoUrl,
+        "vehiclePhoto": vehiclePhotoUrl,
+        "vehicleRegNo": vehicleRegC.text,
+        "driverContact": driverContactC.text,
+        "vehicleType": vehicleType,
+        "carType": carType,
+        "vehicleName": vehicleNameC.text,
+        "seatsAvailable": int.tryParse(seatsC.text) ?? 1,
+        "createdAt": FieldValue.serverTimestamp(),
+        "driverId": user.uid,
+        "driverName": driverName,
+        "rideId": rideId,
+      });
+
+      if (mounted) {
+        setState(() => loading = false);
+      }
+
+      if (FirebaseAuth.instance.currentUser != null) {
+        NotificationService.sendRideNotification(
+          userId: FirebaseAuth.instance.currentUser!.uid,
+          type: 'ride_posted',
+          rideData: {
+            'from': fromC.text,
+            'to': toC.text,
+            'fare': fareC.text,
+            'date': dateC.text,
+            'time': timeC.text,
+          },
+        );
+      }
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.green, size: 32),
+                SizedBox(width: 8),
+                Text('Success!'),
+              ],
+            ),
+            content: const Text('Your ride has been posted successfully!'),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text('OK',
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e, s) {
+      if (mounted) {
+        print('Error posting ride: $e');
+        print(s);
+        setState(() => loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error posting ride: $e')),
+        );
+      }
+    }
+  }
+
+  void _onMapTap(LatLng pos) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
+      if (placemarks.isNotEmpty) {
+        final placemark = placemarks.first;
+        final address = [placemark.name, placemark.locality, placemark.administrativeArea, placemark.country].where((part) => part != null && part.isNotEmpty).join(', ');
+
+        setState(() {
+          if (selectingPickup) {
+            _fromLatLng = pos;
+            fromC.text = address;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Pickup location set: $address'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          } else {
+            _toLatLng = pos;
+            toC.text = address;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Drop location set: $address'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+          _updateFare();
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to get address: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) => child ?? const SizedBox(),
+    );
+    if (picked != null) {
+      dateC.text = DateFormat('yyyy-MM-dd').format(picked);
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) => child ?? const SizedBox(),
+      initialEntryMode: TimePickerEntryMode.dial,
+    );
+    if (picked != null) {
+      timeC.text = picked.format(context);
+    }
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+    );
+  }
+
+  Widget _buildImagePicker({
+    required String label,
+    required File? imageFile,
+    required VoidCallback onTap,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: onTap,
+          child: Container(
+            height: 150,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: imageFile != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(imageFile, fit: BoxFit.cover),
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.add_a_photo, size: 40, color: Colors.grey),
+                        SizedBox(height: 8),
+                        Text('Tap to select image'),
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Post Ride"),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'rides') {
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const MyRides()));
+              } else if (value == 'bookings') {
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const MyBookings()));
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'rides', child: Text("My Rides")),
+              PopupMenuItem(value: 'bookings', child: Text("My Bookings")),
+            ],
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildSectionTitle('Route Details'),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Container(
+                        height: MediaQuery.of(context).size.height * 0.4,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                              color: selectingPickup ? Colors.green : Colors.red,
+                              width: 2),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: GoogleMap(
+                            initialCameraPosition: const CameraPosition(
+                              target: LatLng(21.0, 75.0),
+                              zoom: 7,
+                            ),
+                            onMapCreated: (c) {},
+                            markers: {
+                              if (_fromLatLng != null)
+                                Marker(
+                                  markerId: const MarkerId('from'),
+                                  position: _fromLatLng!,
+                                  infoWindow: const InfoWindow(title: 'Pickup'),
+                                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                                      BitmapDescriptor.hueGreen),
+                                ),
+                              if (_toLatLng != null)
+                                Marker(
+                                  markerId: const MarkerId('to'),
+                                  position: _toLatLng!,
+                                  infoWindow: const InfoWindow(title: 'Drop'),
+                                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                                      BitmapDescriptor.hueRed),
+                                ),
+                            },
+                            onTap: _onMapTap,
+                            myLocationEnabled: true,
+                            myLocationButtonEnabled: true,
+                            gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                              Factory<OneSequenceGestureRecognizer>(
+                                () => EagerGestureRecognizer(),
+                              ),
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: selectingPickup
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: selectingPickup ? Colors.green : Colors.red,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          selectingPickup
+                              ? '🟢 Tap on map to select PICKUP location'
+                              : '🔴 Tap on map to select DROP location',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: selectingPickup
+                                ? Colors.green.shade700
+                                : Colors.red.shade700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () =>
+                                setState(() => selectingPickup = true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  selectingPickup ? Colors.green : Colors.grey,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                            ),
+                            icon: Icon(selectingPickup
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked),
+                            label: const Text('Select Pickup',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                          const SizedBox(width: 10),
+                          ElevatedButton.icon(
+                            onPressed: () =>
+                                setState(() => selectingPickup = false),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  !selectingPickup ? Colors.red : Colors.grey,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                            ),
+                            icon: Icon(!selectingPickup
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked),
+                            label: const Text('Select Drop',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: fromC,
+                        decoration: const InputDecoration(
+                          labelText: 'Pickup Location',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.location_on),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a pickup location';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: toC,
+                        decoration: const InputDecoration(
+                          labelText: 'Drop Location',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.location_on),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a drop location';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              _buildSectionTitle('Ride Details'),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: dateC,
+                        decoration: const InputDecoration(
+                          labelText: "Date",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.calendar_today),
+                        ),
+                        readOnly: true,
+                        onTap: _pickDate,
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: timeC,
+                        decoration: const InputDecoration(
+                          labelText: "Time",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.access_time),
+                        ),
+                        readOnly: true,
+                        onTap: _pickTime,
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: costPerKmC,
+                        decoration: InputDecoration(
+                          labelText: "Cost per km",
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.attach_money),
+                          errorText: costPerKmError,
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (_) => _updateFare(),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter cost per km';
+                          }
+                          if (vehicleType == null || (vehicleType == 'Car' && carType == null)) {
+                            return 'Please select a vehicle type first.';
+                          }
+
+                          final cost = double.tryParse(value);
+                          double minPrice, maxPrice;
+                          String vehicleDesc = vehicleType!;
+
+                          if (vehicleType == 'Bike') {
+                            minPrice = priceRanges['Bike']!['min']!;
+                            maxPrice = priceRanges['Bike']!['max']!;
+                          } else { // Car
+                            vehicleDesc = carType!;
+                            minPrice = priceRanges['Car']![carType]!['min']!;
+                            maxPrice = priceRanges['Car']![carType]!['max']!;
+                          }
+
+                          if (cost == null || cost < minPrice || cost > maxPrice) {
+                            return 'Cost must be between $minPrice and $maxPrice for a $vehicleDesc';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: fareC,
+                        decoration: const InputDecoration(
+                          labelText: "Fare (auto-calculated)",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.money),
+                        ),
+                        readOnly: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              _buildSectionTitle('Vehicle Details'),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: vehicleType,
+                        hint: const Text('Select Vehicle Type'),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.directions_car),
+                        ),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            vehicleType = newValue;
+                            carType = null;
+                            costPerKmC.text = '';
+                            _updateFare();
+                          });
+                        },
+                        items: <String>['Car', 'Bike']
+                            .map<DropdownMenuItem<String>>((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        validator: (value) =>
+                            value == null ? 'Please select a vehicle type' : null,
+                      ),
+                      if (vehicleType == 'Car') ...[
+                        const SizedBox(height: 10),
+                        DropdownButtonFormField<String>(
+                          value: carType,
+                          hint: const Text('Select Car Type'),
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.directions_car_filled),
+                          ),
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              carType = newValue;
+                              costPerKmC.text = '';
+                              _updateFare();
+                            });
+                          },
+                          items: <String>['Hatchback', 'Sedan', 'MPV', 'SUV', 'Luxury']
+                              .map<DropdownMenuItem<String>>((String value) {
+                            return DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
+                          validator: (value) =>
+                              value == null ? 'Please select a car type' : null,
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: vehicleNameC,
+                        decoration: const InputDecoration(
+                          labelText: "Vehicle Name",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.badge),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a vehicle name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: vehicleRegC,
+                        decoration: const InputDecoration(
+                          labelText: "Vehicle Registration Number",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.pin),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a registration number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: seatsC,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: "Available Seats",
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.event_seat),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter the number of available seats';
+                          }
+                          final seats = int.tryParse(value);
+                          if (seats == null || seats <= 0) {
+                            return 'Please enter a valid number of seats';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      _buildImagePicker(
+                        label: 'Vehicle Photo',
+                        imageFile: vehiclePhoto,
+                        onTap: () => _pickFile('vehiclePhoto'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              _buildSectionTitle('Driver Details'),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: driverContactC,
+                        decoration: InputDecoration(
+                          labelText: "Driver Contact Number",
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.phone),
+                          errorText: driverContactError,
+                        ),
+                        keyboardType: TextInputType.phone,
+                        maxLength: 10,
+                        onChanged: (val) {
+                          setState(() {
+                            driverContactError = (val.length == 10 &&
+                                    RegExp(r'^\d{10}$').hasMatch(val))
+                                ? null
+                                : (val.isEmpty
+                                    ? null
+                                    : 'Enter a valid 10 digit number');
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter a contact number';
+                          }
+                          if (value.length != 10 ||
+                              !RegExp(r'^\d{10}$').hasMatch(value)) {
+                            return 'Enter a valid 10 digit number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      _buildImagePicker(
+                        label: 'Driver Photo',
+                        imageFile: driverPhoto,
+                        onTap: () => _pickFile('driverPhoto'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: loading ? null : _postRide,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  textStyle: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                child: loading
+                    ? const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      )
+                    : const Text("Post Ride"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
