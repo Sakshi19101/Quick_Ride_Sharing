@@ -56,8 +56,8 @@ class _PaymentPageState extends State<PaymentPage> {
     }
 
     var options = {
-      'key': 'rzp_test_RBcLkRDIOCOnml', // 🔑 Replace with your Razorpay Test Key
-      'amount': (fareValue * 100).toInt(), // in paise
+      'key': 'rzp_test_RBcLkRDIOCOnml',
+      'amount': (fareValue * 100).toInt(),
       'name': 'Campus Ride',
       'description': 'Booking Ride',
       'prefill': {
@@ -70,7 +70,6 @@ class _PaymentPageState extends State<PaymentPage> {
 
   void _handleSuccess(PaymentSuccessResponse response) async {
     if (widget.bookingId != null) {
-      // Post-ride payment: read booking for context
       final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(widget.bookingId);
       final bookingSnap = await bookingRef.get();
       Map<String, dynamic>? b;
@@ -84,7 +83,6 @@ class _PaymentPageState extends State<PaymentPage> {
         'paymentMethod': 'online',
       });
 
-      // Notify driver payment done (online)
       if (b != null && b['driverId'] != null) {
         final num amount = (b['fare'] is num) ? b['fare'] : (num.tryParse('${b['fare']}') ?? 0);
         await NotificationService.notifyDriverPaymentStatus(
@@ -112,13 +110,11 @@ class _PaymentPageState extends State<PaymentPage> {
         );
       }
     } else {
-      // Pre-ride booking payment
       final user = FirebaseAuth.instance.currentUser!;
       final auth = Provider.of<AuthService>(context, listen: false);
       final profile = auth.profile;
 
       try {
-        // Add all relevant ride info to booking for display in MyBookings
         final newBooking = await FirebaseFirestore.instance.collection('bookings').add({
           'rideId': widget.ride!['id'],
           'userId': user.uid,
@@ -141,7 +137,6 @@ class _PaymentPageState extends State<PaymentPage> {
           'numberOfSeats': widget.passengers?.length,
         });
 
-        // Send booking notification
         NotificationService.sendRideNotification(
           userId: user.uid,
           type: 'ride_booked',
@@ -155,7 +150,6 @@ class _PaymentPageState extends State<PaymentPage> {
           },
         );
 
-        // Notify driver payment done (online pre-ride)
         await NotificationService.notifyDriverPaymentStatus(
           driverUserId: widget.ride!['driverId'],
           amount: (widget.fare ?? 0),
@@ -168,7 +162,6 @@ class _PaymentPageState extends State<PaymentPage> {
           },
         );
 
-        // Notify the driver about this booking with rider details
         await NotificationService.notifyDriverOfBooking(
           driverUserId: widget.ride!['driverId'],
           riderName: profile?['displayName'] ?? 'Rider',
@@ -248,143 +241,252 @@ class _PaymentPageState extends State<PaymentPage> {
       fareValue = 0;
     }
 
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Complete Payment')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 12),
-            Text(
-              'Amount due: ₹${fareValue.toString()}',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _openCheckout,
-              icon: const Icon(Icons.payment),
-              label: const Text('Pay Online'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () async {
-                if (widget.bookingId != null) {
-                  // Post-ride cash payment: mark as completed and notify driver
-                  final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(widget.bookingId);
-                  final snap = await bookingRef.get();
-                  Map<String, dynamic>? b;
-                  if (snap.exists) b = snap.data() as Map<String, dynamic>;
-
-                  await bookingRef.update({
-                    'status': 'completed',
-                    'paymentMethod': 'cash',
-                  });
-
-                  if (b != null && b['driverId'] != null) {
-                    final num amount = (b['fare'] is num) ? b['fare'] : (num.tryParse('${b['fare']}') ?? 0);
-                    await NotificationService.notifyDriverPaymentStatus(
-                      driverUserId: b['driverId'],
-                      amount: amount,
-                      method: 'cash',
-                      rideData: {
-                        'from': b['from'],
-                        'to': b['to'],
-                        'date': b['date'],
-                        'time': b['time'],
-                      },
-                    );
-                  }
-
-                  if (widget.driverId != null) {
-                    // After cash payment, go to feedback like online
-                    // ignore: use_build_context_synchronously
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FeedbackPage(
-                          driverId: widget.driverId!,
-                          bookingId: widget.bookingId!,
-                        ),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text(
+          'Complete Payment',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor: theme.scaffoldBackgroundColor,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 40),
+              
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(32.0),
+                decoration: BoxDecoration(
+                  color: theme.cardTheme.color,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: theme.dividerTheme.color ?? Colors.transparent,
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 48,
+                      color: theme.primaryColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Amount Due',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7),
                       ),
-                    );
-                  } else {
-                    // ignore: use_build_context_synchronously
-                    Navigator.pop(context);
-                  }
-                } else {
-                  // Pre-ride cash selection: create booking and proceed
-                  final user = FirebaseAuth.instance.currentUser!;
-                  final auth = Provider.of<AuthService>(context, listen: false);
-                  final profile = auth.profile;
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '₹${fareValue.toString()}',
+                      style: theme.textTheme.displayMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 40),
+              
+              Text(
+                'Choose Payment Method',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              Container(
+                width: double.infinity,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _openCheckout,
+                  icon: Icon(
+                    Icons.payment,
+                    color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                  ),
+                  label: Text(
+                    'Pay Online',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              Container(
+                width: double.infinity,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.dividerTheme.color ?? Colors.transparent,
+                    width: 1,
+                  ),
+                ),
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    if (widget.bookingId != null) {
+                      final bookingRef = FirebaseFirestore.instance.collection('bookings').doc(widget.bookingId);
+                      final snap = await bookingRef.get();
+                      Map<String, dynamic>? b;
+                      if (snap.exists) b = snap.data() as Map<String, dynamic>;
 
-                  try {
-                    final newBooking = await FirebaseFirestore.instance.collection('bookings').add({
-                      'rideId': widget.ride!['id'],
-                      'userId': user.uid,
-                      'riderName': profile?['displayName'] ?? 'N/A',
-                      'riderContact': user.phoneNumber ?? 'N/A',
-                      'driverId': widget.ride!['driverId'],
-                      'fare': fareValue,
-                      'status': 'confirmed',
-                      'paymentMethod': 'cash',
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'from': widget.ride!['from'],
-                      'to': widget.ride!['to'],
-                      'date': widget.ride!['date'],
-                      'time': widget.ride!['time'],
-                      'costPerKm': widget.ride!['costPerKm'],
-                      'vehicleRegNo': widget.ride!['vehicleRegNo'],
-                      'driverContact': widget.ride!['driverContact'],
-                      'vehiclePhoto': widget.ride!['vehiclePhoto'],
-                      'passengers': widget.passengers?.map((p) => p.toMap()).toList(),
-                      'numberOfSeats': widget.passengers?.length,
-                    });
+                      await bookingRef.update({
+                        'status': 'completed',
+                        'paymentMethod': 'cash',
+                      });
 
-                    // Inform driver of booking details
-                    await NotificationService.notifyDriverOfBooking(
-                      driverUserId: widget.ride!['driverId'],
-                      riderName: profile?['displayName'] ?? 'Rider',
-                      riderContact: user.phoneNumber ?? '',
-                      rideData: {
-                        'from': widget.ride!['from'],
-                        'to': widget.ride!['to'],
-                        'fare': fareValue,
-                        'date': widget.ride!['date'],
-                        'time': widget.ride!['time'],
-                      },
-                      numberOfSeats: widget.passengers?.length,
-                    );
+                      if (b != null && b['driverId'] != null) {
+                        final num amount = (b['fare'] is num) ? b['fare'] : (num.tryParse('${b['fare']}') ?? 0);
+                        await NotificationService.notifyDriverPaymentStatus(
+                          driverUserId: b['driverId'],
+                          amount: amount,
+                          method: 'cash',
+                          rideData: {
+                            'from': b['from'],
+                            'to': b['to'],
+                            'date': b['date'],
+                            'time': b['time'],
+                          },
+                        );
+                      }
 
-                    if (mounted) {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => RideSimulationScreen(
-                            from: widget.ride!['from'],
-                            to: widget.ride!['to'],
-                            rideId: widget.ride!['id'],
-                            driverId: widget.ride!['driverId'],
-                            bookingId: newBooking.id,
+                      if (widget.driverId != null) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FeedbackPage(
+                              driverId: widget.driverId!,
+                              bookingId: widget.bookingId!,
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    } else {
+                      final user = FirebaseAuth.instance.currentUser!;
+                      final auth = Provider.of<AuthService>(context, listen: false);
+                      final profile = auth.profile;
+
+                      try {
+                        final newBooking = await FirebaseFirestore.instance.collection('bookings').add({
+                          'rideId': widget.ride!['id'],
+                          'userId': user.uid,
+                          'riderName': profile?['displayName'] ?? 'N/A',
+                          'riderContact': user.phoneNumber ?? 'N/A',
+                          'driverId': widget.ride!['driverId'],
+                          'fare': fareValue,
+                          'status': 'confirmed',
+                          'paymentMethod': 'cash',
+                          'createdAt': FieldValue.serverTimestamp(),
+                          'from': widget.ride!['from'],
+                          'to': widget.ride!['to'],
+                          'date': widget.ride!['date'],
+                          'time': widget.ride!['time'],
+                          'costPerKm': widget.ride!['costPerKm'],
+                          'vehicleRegNo': widget.ride!['vehicleRegNo'],
+                          'driverContact': widget.ride!['driverContact'],
+                          'vehiclePhoto': widget.ride!['vehiclePhoto'],
+                          'passengers': widget.passengers?.map((p) => p.toMap()).toList(),
+                          'numberOfSeats': widget.passengers?.length,
+                        });
+
+                        await NotificationService.notifyDriverOfBooking(
+                          driverUserId: widget.ride!['driverId'],
+                          riderName: profile?['displayName'] ?? 'Rider',
+                          riderContact: user.phoneNumber ?? '',
+                          rideData: {
+                            'from': widget.ride!['from'],
+                            'to': widget.ride!['to'],
+                            'fare': fareValue,
+                            'date': widget.ride!['date'],
+                            'time': widget.ride!['time'],
+                          },
+                          numberOfSeats: widget.passengers?.length,
+                        );
+
+                        if (mounted) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => RideSimulationScreen(
+                                from: widget.ride!['from'],
+                                to: widget.ride!['to'],
+                                rideId: widget.ride!['id'],
+                                driverId: widget.ride!['driverId'],
+                                bookingId: newBooking.id,
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Error saving cash booking: $e')),
+                          );
+                          Navigator.pop(context);
+                        }
+                      }
                     }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error saving cash booking: $e')),
-                      );
-                      Navigator.pop(context);
-                    }
-                  }
-                }
-              },
-              icon: const Icon(Icons.money),
-              label: const Text('Pay Cash'),
-            ),
-          ],
+                  },
+                  icon: Icon(Icons.money, color: theme.primaryColor),
+                  label: Text(
+                    'Pay Cash',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.primaryColor,
+                    side: BorderSide(color: theme.primaryColor, width: 1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -13,7 +13,11 @@ class _LatLng {
 }
 
 class RideSearchCard extends StatefulWidget {
-  const RideSearchCard({Key? key}) : super(key: key);
+  final Map<String, dynamic>? ride;
+  final String? rideId;
+  final VoidCallback? onBook;
+  
+  const RideSearchCard({Key? key, this.ride, this.rideId, this.onBook}) : super(key: key);
 
   @override
   State<RideSearchCard> createState() => _RideSearchCardState();
@@ -174,103 +178,595 @@ class _RideSearchCardState extends State<RideSearchCard> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: true,
-      child: SingleChildScrollView(
+    final theme = Theme.of(context);
+    
+    // If ride data is provided, show ride card
+    if (widget.ride != null && widget.rideId != null) {
+      return _buildRideCard(theme);
+    }
+    
+    // Otherwise show search card
+    return _buildSearchCard(theme);
+  }
+
+  Widget _buildRideCard(ThemeData theme) {
+    final ride = widget.ride!;
+    final driverName = ride['driverName'] ?? 'Unknown Driver';
+    final from = ride['from'] ?? 'Unknown Location';
+    final to = ride['to'] ?? 'Unknown Location';
+    final date = ride['date'] ?? '';
+    final time = ride['time'] ?? '';
+    final fare = ride['fare']?.toString() ?? '0';
+    final seatsAvailable = ride['seatsAvailable'] ?? 0;
+    final carModel = ride['carModel'] ?? 'Standard Car';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.dividerTheme.color ?? Colors.transparent,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header with driver info
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.person,
+                    size: 24,
+                    color: theme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        driverName,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        carModel,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$seatsAvailable seats',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Route info
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black12, blurRadius: 8)
-                  ]),
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.dividerTheme.color ?? Colors.transparent,
+                  width: 1,
+                ),
+              ),
               child: Column(
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.circle_outlined),
-                    title: TextField(
-                        controller: _fromCtrl,
-                        decoration: const InputDecoration(
-                            hintText: 'Leaving from',
-                            border: InputBorder.none)),
+                  _buildLocationRow(
+                    theme: theme,
+                    icon: Icons.circle,
+                    label: 'From',
+                    location: from,
+                    isFirst: true,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.circle_outlined),
-                    title: TextField(
-                        controller: _toCtrl,
-                        decoration: const InputDecoration(
-                            hintText: 'Going to',
-                            border: InputBorder.none)),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.calendar_today_outlined),
-                    title: Text(DateFormat.yMMMd().format(_selectedDate)),
-                    onTap: _pickDate,
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.person_outline),
-                    title: Text('$_passengers Passengers'),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(
-                          icon: const Icon(Icons.remove),
-                          onPressed: _passengers > 1
-                              ? () => setState(() => _passengers--)
-                              : null),
-                      IconButton(
-                          icon: const Icon(Icons.add),
-                          onPressed: () =>
-                              setState(() => _passengers++)),
-                    ]),
-                  ),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _search,
-                      style: ElevatedButton.styleFrom(
-                        shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(
-                                bottom: Radius.circular(14))),
-                        backgroundColor: Colors.blueAccent,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _loading
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(
-                                  color: Colors.white, strokeWidth: 2))
-                          : const Text('Search'),
+                  Container(
+                    height: 20,
+                    child: VerticalDivider(
+                      color: theme.textTheme.bodyMedium?.color?.withOpacity(0.3),
+                      thickness: 2,
                     ),
+                  ),
+                  _buildLocationRow(
+                    theme: theme,
+                    icon: Icons.location_on,
+                    label: 'To',
+                    location: to,
+                    isFirst: false,
                   ),
                 ],
               ),
             ),
-            if (_results.isEmpty && !_loading)
-              Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                      'No rides found for the selected criteria. Please try a different date or location.',
-                      style: TextStyle(color: Colors.grey[700]))),
-            for (final r in _results)
-              _SearchResultCard(
-                ride: r,
-                passengers: _passengers,
+            
+            const SizedBox(height: 16),
+            
+            // Date, time, and fare
+            Row(
+              children: [
+                Expanded(
+                  child: _buildInfoCard(
+                    theme: theme,
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Date',
+                    value: DateFormat('MMM dd').format(DateFormat('yyyy-MM-dd').parse(date)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildInfoCard(
+                    theme: theme,
+                    icon: Icons.access_time,
+                    label: 'Time',
+                    value: time,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildInfoCard(
+                    theme: theme,
+                    icon: Icons.currency_rupee,
+                    label: 'Fare',
+                    value: '₹$fare',
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Book button
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: widget.onBook,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.primaryColor,
+                  foregroundColor: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Book Ride',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildLocationRow({
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    required String location,
+    required bool isFirst,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isFirst 
+                ? theme.primaryColor.withOpacity(0.1)
+                : Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isFirst ? theme.primaryColor : Colors.green,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+                ),
+              ),
+              Text(
+                location,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard({
+    required ThemeData theme,
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.dividerTheme.color ?? Colors.transparent,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: theme.primaryColor,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
+            ),
+          ),
+          Text(
+            value,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchCard(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.dividerTheme.color ?? Colors.transparent,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Search header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20.0),
+            decoration: BoxDecoration(
+              color: theme.primaryColor.withOpacity(0.05),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search,
+                  color: theme.primaryColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Search for Rides',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.primaryColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Search form
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                _buildSearchField(
+                  theme: theme,
+                  controller: _fromCtrl,
+                  label: 'From',
+                  icon: Icons.circle_outlined,
+                  hintText: 'Enter pickup location',
+                ),
+                const SizedBox(height: 16),
+                _buildSearchField(
+                  theme: theme,
+                  controller: _toCtrl,
+                  label: 'To',
+                  icon: Icons.location_on_outlined,
+                  hintText: 'Enter destination',
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDateSelector(theme),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildPassengerSelector(theme),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _search,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.primaryColor,
+                      foregroundColor: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _loading
+                        ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            'Search Rides',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchField({
+    required ThemeData theme,
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required String hintText,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          style: theme.textTheme.bodyLarge,
+          maxLines: 1,
+          decoration: InputDecoration(
+            hintText: hintText,
+            prefixIcon: Icon(icon, color: theme.iconTheme.color),
+            filled: true,
+            fillColor: theme.inputDecorationTheme.fillColor,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.dividerTheme.color ?? Colors.transparent),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.dividerTheme.color ?? Colors.transparent),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: theme.primaryColor,
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateSelector(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Date',
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: _pickDate,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: theme.inputDecorationTheme.fillColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.dividerTheme.color ?? Colors.transparent,
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.calendar_today_outlined,
+                  color: theme.iconTheme.color,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    DateFormat.yMMMd().format(_selectedDate),
+                    style: theme.textTheme.bodyLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_drop_down,
+                  color: theme.iconTheme.color,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPassengerSelector(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Passengers',
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.inputDecorationTheme.fillColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.dividerTheme.color ?? Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              GestureDetector(
+                onTap: _passengers > 1 ? () => setState(() => _passengers--) : null,
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _passengers > 1 
+                        ? theme.primaryColor 
+                        : theme.textTheme.bodyMedium?.color?.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.remove,
+                    size: 16,
+                    color: _passengers > 1 
+                        ? (theme.primaryColor == Colors.black ? Colors.white : Colors.black)
+                        : theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+                  ),
+                ),
+              ),
+              Text(
+                '$_passengers',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _passengers++),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.add,
+                    size: 16,
+                    color: theme.primaryColor == Colors.black ? Colors.white : Colors.black,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // Simple result card used by RideSearchCard when showing search results.
-// Kept minimal to match the app's look and to fix missing symbol errors.
 class _SearchResultCard extends StatelessWidget {
   final Map<String, dynamic> ride;
   final int passengers;

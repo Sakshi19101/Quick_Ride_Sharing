@@ -160,14 +160,46 @@ class _RiderHomeState extends State<RiderHome> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text("Find a Ride"),
+        title: Text(
+          "Find a Ride",
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.sos, color: Colors.red),
-            onPressed: _showSosOptions,
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: ElevatedButton.icon(
+              onPressed: _showSosOptions,
+              icon: Icon(
+                Icons.emergency,
+                color: Colors.white,
+                size: 20,
+              ),
+              label: Text(
+                "SOS",
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -241,6 +273,8 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   Widget _buildAvailableRidesSheet() {
+    final theme = Theme.of(context);
+    
     return DraggableScrollableSheet(
       initialChildSize: 0.3,
       minChildSize: 0.25,
@@ -248,73 +282,204 @@ class _RiderHomeState extends State<RiderHome> {
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).canvasColor,
+            color: theme.cardTheme.color,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            boxShadow: [BoxShadow(blurRadius: 10, color: Colors.black.withOpacity(0.2))],
+            border: Border(
+              top: BorderSide(
+                color: theme.dividerTheme.color ?? Colors.transparent,
+                width: 1,
+              ),
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 20,
+                color: Colors.black.withOpacity(0.1),
+                offset: const Offset(0, -5),
+              ),
+            ],
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Handle bar
               Container(
                 width: 40,
                 height: 5,
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
+              
+              // Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Available Rides", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    Row(
-                      children: [
-                        const Text("Share Location"),
-                        Switch(
-                          value: _sharingLocation,
-                          onChanged: _toggleLocationSharing,
-                        ),
-                      ],
-                    )
+                    Text(
+                      "Available Rides",
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: theme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 18,
+                            color: theme.primaryColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Share Location",
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.primaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Switch(
+                            value: _sharingLocation,
+                            onChanged: _toggleLocationSharing,
+                            activeColor: theme.primaryColor,
+                            activeTrackColor: theme.primaryColor.withOpacity(0.3),
+                            inactiveThumbColor: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+                            inactiveTrackColor: theme.textTheme.bodyMedium?.color?.withOpacity(0.2),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              
+              // Divider
+              Container(
+                height: 1,
+                color: theme.dividerTheme.color,
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+              ),
+              
+              // Rides List
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection("rides").where('seatsAvailable', isGreaterThan: 0).snapshots(),
+                  stream: FirebaseFirestore.instance
+                      .collection("rides")
+                      .where('seatsAvailable', isGreaterThan: 0)
+                      .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
-                      return Center(child: Text("Error loading rides: ${snapshot.error}"));
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: theme.textTheme.bodyMedium?.color?.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              "Error loading rides: ${snapshot.error}",
+                              style: theme.textTheme.bodyMedium,
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      );
                     }
+                    
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
                     }
 
                     final docs = snapshot.data?.docs ?? [];
 
-                    // Always show the search card as the first scrollable item so it won't overflow the sheet.
                     if (docs.isEmpty) {
                       return ListView(
                         controller: scrollController,
-                        padding: const EdgeInsets.all(8.0),
+                        padding: const EdgeInsets.all(24.0),
                         children: [
-                          const Padding(padding: EdgeInsets.symmetric(horizontal: 8.0), child: RideSearchCard()),
-                          const SizedBox(height: 8),
-                          _buildEmptyState(),
+                          Center(
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 80,
+                                  height: 80,
+                                  decoration: BoxDecoration(
+                                    color: theme.primaryColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Icon(
+                                    Icons.no_crash,
+                                    size: 40,
+                                    color: theme.primaryColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "No rides available",
+                                  style: theme.textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Check back later or be the first to offer a ride!",
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       );
                     }
 
                     return ListView.builder(
                       controller: scrollController,
-                      padding: const EdgeInsets.all(8.0),
-                      itemCount: docs.length + 1, // +1 for the search card
-                      itemBuilder: (c, i) {
-                        if (i == 0) return const Padding(padding: EdgeInsets.symmetric(horizontal: 8.0), child: RideSearchCard());
-                        final idx = i - 1;
-                        final ride = docs[idx].data() as Map<String, dynamic>;
-                        final rideId = docs[idx].id;
-                        return _buildRideCard(ride, rideId);
+                      padding: const EdgeInsets.all(16.0),
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final ride = docs[index].data() as Map<String, dynamic>;
+                        final rideId = docs[index].id;
+
+                        // Skip outdated rides
+                        if (_isRideOutdated(ride)) {
+                          _removeRide(rideId);
+                          return const SizedBox.shrink();
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: RideSearchCard(
+                            ride: ride,
+                            rideId: rideId,
+                            onBook: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PassengerDetailsScreen(
+                                    numberOfSeats: ride['availableSeats'] ?? 1,
+                                    ride: ride,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
                       },
                     );
                   },
@@ -524,6 +689,7 @@ class _SimpleExpandableRideCardState extends State<_SimpleExpandableRideCard> {
                   child: Text(
                     "₹${widget.ride['fare']}",
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

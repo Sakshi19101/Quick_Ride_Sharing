@@ -419,6 +419,7 @@ class _PostRideState extends State<PostRide> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildSectionTitle('Route Details'),
@@ -499,44 +500,50 @@ class _PostRideState extends State<PostRide> {
                                 : Colors.red.shade700,
                           ),
                           textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          ElevatedButton.icon(
-                            onPressed: () =>
-                                setState(() => selectingPickup = true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  selectingPickup ? Colors.green : Colors.grey,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
+                          Flexible(
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                    setState(() => selectingPickup = true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    selectingPickup ? Colors.green : Colors.grey,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                              ),
+                              icon: Icon(selectingPickup
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked),
+                              label: const Text('Select Pickup',
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
-                            icon: Icon(selectingPickup
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked),
-                            label: const Text('Select Pickup',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                           const SizedBox(width: 10),
-                          ElevatedButton.icon(
-                            onPressed: () =>
-                                setState(() => selectingPickup = false),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  !selectingPickup ? Colors.red : Colors.grey,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
+                          Flexible(
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                    setState(() => selectingPickup = false),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor:
+                                    !selectingPickup ? Colors.red : Colors.grey,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                              ),
+                              icon: Icon(!selectingPickup
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_unchecked),
+                              label: const Text('Select Drop',
+                                  style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
-                            icon: Icon(!selectingPickup
-                                ? Icons.radio_button_checked
-                                : Icons.radio_button_unchecked),
-                            label: const Text('Select Drop',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),
